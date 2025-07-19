@@ -6,9 +6,9 @@ phases:
       python: 3.9
   build:
     commands:
-      - echo "Zipping Lambda Function..."
-      - cd lambda
-      - zip -r ../lambda.zip .
+      - echo "Zipping lambda_function.py..."
+      - zip lambda.zip lambda_function.py
 artifacts:
   files:
     - lambda.zip
+
