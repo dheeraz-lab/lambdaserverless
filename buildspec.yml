@@ -4,11 +4,17 @@ phases:
   install:
     runtime-versions:
       python: 3.9
+    commands:
+      - pip install awscli
   build:
     commands:
-      - echo "Zipping lambda_function.py..."
-      - zip lambda.zip lambda_function.py
+      - echo "Packaging CloudFormation template..."
+      - aws cloudformation package \
+          --template-file template.yml \
+          --s3-bucket <your-s3-artifact-bucket> \
+          --output-template-file packaged.yaml
+
 artifacts:
   files:
-    - lambda.zip
+    - packaged.yaml
 
