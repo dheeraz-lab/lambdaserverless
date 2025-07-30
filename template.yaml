@@ -1,20 +1,23 @@
 AWSTemplateFormatVersion: '2010-09-09'
+Description: Lambda with API Gateway and CloudWatch Alarm
+
 Resources:
+
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
       RoleName: LambdaExecutionRole
       AssumeRolePolicyDocument:
-        Version: '2012-10-17'
+        Version: "2012-10-17"
         Statement:
           - Effect: Allow
             Principal:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
       Policies:
-        - PolicyName: LambdaLogsPolicy
+        - PolicyName: LambdaBasicExecution
           PolicyDocument:
-            Version: '2012-10-17'
+            Version: "2012-10-17"
             Statement:
               - Effect: Allow
                 Action:
@@ -23,14 +26,70 @@ Resources:
                   - logs:PutLogEvents
                 Resource: "*"
 
-  WeatherLambdaFunction:
+  LambdaFunction:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: WeatherFunction
+      FunctionName: WeatherFetcher
       Handler: lambda_function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
-      Code:
-        S3Bucket: your-s3-bucket-name
-        S3Key: lambda.zip
       Runtime: python3.9
       Timeout: 10
+      Code:
+        S3Bucket: lambda-artifacts-dheeraz-312229962648
+        S3Key: lambda.zip
+
+  LambdaApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: WeatherAPI
+
+  LambdaApiResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt LambdaApi.RootResourceId
+      PathPart: weather
+      RestApiId: !Ref LambdaApi
+
+  LambdaApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      HttpMethod: GET
+      ResourceId: !Ref LambdaApiResource
+      RestApiId: !Ref LambdaApi
+      AuthorizationType: NONE
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri:
+          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction.Arn}/invocations
+
+  LambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref LambdaFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Sub: arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${LambdaApi}/*/GET/weather
+
+  LambdaErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: LambdaErrorAlarm
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmDescription: "Triggers when Lambda has more than 1 error in 1 minute"
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref LambdaFunction
+
+Outputs:
+  ApiEndpoint:
+    Description: "Weather API Endpoint"
+    Value:
+      Fn::Sub: https://${LambdaApi}.execute-api.${AWS::Region}.amazonaws.com/prod/weather
